@@ -28,14 +28,14 @@ class MuZeroConfig:
 
 
         ### Self-Play
-        self.num_actors = 4  # Number of simultaneous threads self-playing to feed the replay buffer
-        self.max_moves = self.board_size * self.board_size  # Maximum number of moves if game is not finished before
-        self.num_simulations = self.board_size * self.board_size  # Number of future moves self-simulated
+        self.num_actors = 8  # Number of simultaneous threads self-playing to feed the replay buffer
+        self.max_moves = self.board_size * self.board_size * 2  # Maximum number of moves if game is not finished before
+        self.num_simulations = 400  # Number of future moves self-simulated
         self.discount = 1  # Chronological discount of the reward
-        self.temperature_threshold = int(self.board_size * self.board_size * 0.4)  # Number of moves before dropping temperature to 0 (ie playing according to the max)
+        self.temperature_threshold = 30  # Number of moves before dropping temperature to 0 (ie playing according to the max)
 
         # Root prior exploration noise
-        self.root_dirichlet_alpha = 0.25
+        self.root_dirichlet_alpha = 0.03
         self.root_exploration_fraction = 0.25
 
         # UCB formula
@@ -69,33 +69,33 @@ class MuZeroConfig:
 
         ### Training
         self.results_path = os.path.join(os.path.dirname(__file__), "../results", os.path.basename(__file__)[:-3], datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S"))  # Path to store the model weights and TensorBoard logs
-        self.training_steps = 120000  # Total number of training steps (ie weights update according to a batch)
+        self.training_steps = 2000  # Total number of training steps (ie weights update according to a batch)
         self.batch_size = 512  # Number of parts of games to train on at each training step
-        self.checkpoint_interval = 10  # Number of training steps before using the model for sef-playing
-        self.value_loss_weight = 0.5  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
+        self.checkpoint_interval = 5  # Number of training steps before using the model for sef-playing
+        self.value_loss_weight = 0.25  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
         self.training_device = "cuda" if torch.cuda.is_available() else "cpu"  # Train on GPU if available
 
-        self.optimizer = "Adam"  # "Adam" or "SGD". Paper uses SGD
+        self.optimizer = "SGD"  # "Adam" or "SGD". Paper uses SGD
         self.weight_decay = 1e-4  # L2 weights regularization
         self.momentum = 0.9  # Used only if optimizer is SGD
 
         # Exponential learning rate schedule
         self.lr_init = 0.01  # Initial learning rate
-        self.lr_decay_rate = 0.9  # Set it to 1 to use a constant learning rate
-        self.lr_decay_steps = 10000
+        self.lr_decay_rate = 0.1  # Set it to 1 to use a constant learning rate
+        self.lr_decay_steps = 800
 
 
 
         ### Replay Buffer
-        self.window_size = 1000  # Number of self-play games to keep in the replay buffer
+        self.window_size = 500  # Number of self-play games to keep in the replay buffer
         self.num_unroll_steps = 5  # Number of game moves to keep for every batch element
-        self.td_steps = 50  # Number of steps in the future to take into account for calculating the target value
-        self.use_last_model_value = False  # Use the last model to provide a fresher, stable n-step value (See paper appendix Reanalyze)
+        self.td_steps = self.max_moves  # Number of steps in the future to take into account for calculating the target value
+        self.use_last_model_value = True  # Use the last model to provide a fresher, stable n-step value (See paper appendix Reanalyze)
 
         # Prioritized Replay (See paper appendix Training)
         self.PER = True  # Select in priority the elements in the replay buffer which are unexpected for the network
-        self.use_max_priority = True  # Use the n-step TD error as initial priority. Better for large replay buffer
-        self.PER_alpha = 0.5  # How much prioritization is used, 0 corresponding to the uniform case, paper suggests 1
+        self.use_max_priority = False  # Use the n-step TD error as initial priority. Better for large replay buffer
+        self.PER_alpha = 1  # How much prioritization is used, 0 corresponding to the uniform case, paper suggests 1
         self.PER_beta = 1.0
 
 
@@ -103,7 +103,7 @@ class MuZeroConfig:
         ### Adjust the self play / training ratio to avoid over/underfitting
         self.self_play_delay = 0  # Number of seconds to wait after each played game
         self.training_delay = 0  # Number of seconds to wait after each training step
-        self.ratio = None  # Desired self played games per training step ratio. Equivalent to a synchronous version, training can take much longer. Set it to None to disable it
+        self.ratio = 1  # Desired self played games per training step ratio. Equivalent to a synchronous version, training can take much longer. Set it to None to disable it
 
 
     def visit_softmax_temperature_fn(self, trained_steps):
@@ -113,12 +113,10 @@ class MuZeroConfig:
         Returns:
             Positive float.
         """
-        if trained_steps < 0.5 * self.training_steps:
+        if trained_steps < 30:
             return 1.0
-        elif trained_steps < 0.75 * self.training_steps:
-            return 0.5
         else:
-            return 0.25
+            return 0
 
 
 class Game(AbstractGame):
