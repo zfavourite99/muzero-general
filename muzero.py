@@ -1,6 +1,7 @@
 import copy
 import importlib
 import os
+import pickle
 import time
 
 import numpy
@@ -49,8 +50,9 @@ class MuZero:
         numpy.random.seed(self.config.seed)
         torch.manual_seed(self.config.seed)
 
-        # Weights used to initialize workers
+        # Weights and replay buffer used to initialize workers
         self.muzero_weights = models.MuZeroNetwork(self.config).get_weights()
+        self.replay_buffer = None
 
     def train(self):
         ray.init()
@@ -64,6 +66,15 @@ class MuZero:
             copy.deepcopy(self.muzero_weights), self.game_name, self.config,
         )
         replay_buffer_worker = replay_buffer.ReplayBuffer.remote(self.config)
+        # Pre-load buffer if pulling from persistent storage
+        if self.replay_buffer:
+            for game_history_id in self.replay_buffer:
+                replay_buffer_worker.save_game.remote(
+                    self.replay_buffer[game_history_id]
+                )
+            print(
+                "\nLoaded {} games from replay buffer.".format(len(self.replay_buffer))
+            )
         self_play_workers = [
             self_play.SelfPlay.remote(
                 copy.deepcopy(self.muzero_weights),
@@ -88,6 +99,13 @@ class MuZero:
         self._logging_loop(shared_storage_worker, replay_buffer_worker)
 
         self.muzero_weights = ray.get(shared_storage_worker.get_weights.remote())
+        self.replay_buffer = ray.get(replay_buffer_worker.get_buffer.remote())
+        # Persist replay buffer to disk
+        print("\n\nPersisting replay buffer games to disk...")
+        pickle.dump(
+            self.replay_buffer,
+            open(os.path.join(self.config.results_path, "replay_buffer.pkl"), "wb"),
+        )
         # End running actors
         ray.shutdown()
 
@@ -211,14 +229,26 @@ class MuZero:
         ray.shutdown()
         return sum(history.reward_history)
 
-    def load_model(self, path=None):
-        if not path:
-            path = os.path.join(self.config.results_path, "model.weights")
-        try:
-            self.muzero_weights = torch.load(path)
-            print("\nUsing weights from {}".format(path))
-        except FileNotFoundError:
-            print("\nThere is no model saved in {}.".format(path))
+    def load_model(self, weights_path=None, replay_buffer_path=None):
+        # Load weights
+        if weights_path:
+            if os.path.exists(weights_path):
+                self.muzero_weights = torch.load(weights_path)
+                print("\nUsing weights from {}".format(weights_path))
+            else:
+                print("\nThere is no model saved in {}.".format(weights_path))
+
+        # Load replay buffer
+        if replay_buffer_path:
+            if os.path.exists(replay_buffer_path):
+                self.replay_buffer = pickle.load(open(replay_buffer_path, "rb"))
+                print("\nInitializing replay buffer with {}".format(replay_buffer_path))
+            else:
+                print(
+                    "Warning: Replay buffer path '{}' doesn't exist.  Using empty buffer.".format(
+                        replay_buffer_path
+                    )
+                )
 
 
 if __name__ == "__main__":
@@ -262,10 +292,19 @@ if __name__ == "__main__":
         if choice == 0:
             muzero.train()
         elif choice == 1:
-            path = input("Enter a path to the model.weights: ")
-            while not os.path.isfile(path):
-                path = input("Invalid path. Try again: ")
-            muzero.load_model(path)
+            weights_path = input(
+                "Enter a path to the model.weights, or ENTER if none: "
+            )
+            while weights_path and not os.path.isfile(weights_path):
+                weights_path = input("Invalid weights path. Try again: ")
+            replay_buffer_path = input(
+                "Enter path for existing replay buffer, or ENTER if none: "
+            )
+            while replay_buffer_path and not os.path.isfile(replay_buffer_path):
+                replay_buffer_path = input("Invalid replay buffer path. Try again: ")
+            muzero.load_model(
+                weights_path=weights_path, replay_buffer_path=replay_buffer_path
+            )
         elif choice == 2:
             muzero.test(render=True, opponent="self", muzero_player=None)
         elif choice == 3:
