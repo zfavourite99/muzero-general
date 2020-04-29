@@ -13,7 +13,7 @@ class MuZeroConfig:
     def __init__(self):
         self.seed = 0  # Seed for numpy, torch and the game
 
-        self.board_size = 8
+        self.board_size = 6
 
         ### Game
         self.observation_shape = (4, self.board_size, self.board_size)  # Dimensions of the game observation, must be 3 (channel, height, width). For a 1D array, please reshape it to (1, 1, length of array)
@@ -28,9 +28,9 @@ class MuZeroConfig:
 
 
         ### Self-Play
-        self.num_actors = 3  # Number of simultaneous threads self-playing to feed the replay buffer
+        self.num_actors = 8  # Number of simultaneous threads self-playing to feed the replay buffer
         self.max_moves = self.board_size * self.board_size * 2  # Maximum number of moves if game is not finished before
-        self.num_simulations = 100  # Number of future moves self-simulated
+        self.num_simulations = 400  # Number of future moves self-simulated
         self.discount = 1  # Chronological discount of the reward
         self.temperature_threshold = 30  # Number of moves before dropping temperature to 0 (ie playing according to the max)
 
@@ -69,7 +69,7 @@ class MuZeroConfig:
 
         ### Training
         self.results_path = os.path.join(os.path.dirname(__file__), "../results", os.path.basename(__file__)[:-3], datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S"))  # Path to store the model weights and TensorBoard logs
-        self.training_steps = 10000  # Total number of training steps (ie weights update according to a batch)
+        self.training_steps = 2000  # Total number of training steps (ie weights update according to a batch)
         self.batch_size = 512  # Number of parts of games to train on at each training step
         self.checkpoint_interval = 5  # Number of training steps before using the model for sef-playing
         self.value_loss_weight = 0.25  # Scale the value loss to avoid overfitting of the value function, paper recommends 0.25 (See paper appendix Reanalyze)
@@ -220,8 +220,8 @@ class Game(AbstractGame):
 
 class Gobang:
     def __init__(self):
-        self.board_size = 8
-        self.n_in_row = 5
+        self.board_size = 6
+        self.n_in_row = 4
         self.board = numpy.zeros((self.board_size, self.board_size)).astype(int)
         self.player = 1
         self.last_action = -1
